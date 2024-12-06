@@ -1,0 +1,24 @@
+from multiprocessing import Value
+import telebot
+from currency_converter import CurrencyConverter
+from telebot import types
+
+
+bot = telebot.TeleBot('7937493118:AAHhVBdgP6rpeGhs9D3hlkmqX3eS0uopb5Q')
+currency = CurrencyConverter()
+amount = 0
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    bot.send_message(message.chat.id, f'Привет, {message.from_user.first_name} {message.from_user.last_name}!\n Я - твой личный переводчик валют.\n Чтобы узнать подробнее о моих навыках, напиши /help.')
+
+
+@bot.message_handler(commands=['help'])
+def send_welcome(message):
+    bot.send_message(message.chat.id, 'Список навыков:\n /start - начать работу с ботом\n /help - получить список доступных навыков\n /convert - конвертировать валюту')
+
+
+@bot.message_handler(commands=['convert'])
+def converter(message):
+    bot.send_message(message.chat.id, 'Сколько конвертируем?')
+    bot.register_next_step_handler(message, summa)
