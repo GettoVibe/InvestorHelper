@@ -1,9 +1,13 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+from dotenv import load_dotenv
 import requests
+import os
+
+load_dotenv()
 
 # Токен Telegram бота
-TELEGRAM_TOKEN = "7937493118:AAHhVBdgP6rpeGhs9D3hlkmqX3eS0uopb5Q"
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
 # API для получения курсов валют
 EXCHANGE_RATE_API_URL = "https://api.exchangerate-api.com/v4/latest/"
@@ -19,7 +23,7 @@ async def start(update: Update, context: CallbackContext):
 # Команда /help
 async def help_command(update: Update, context: CallbackContext):
     await update.message.reply_text(
-        "Вот что я умею:\n"
+        "Вот, что я умею:\n"
         "/start - Запустить бота\n"
         "/help - Помощь\n"
         "/rates - Посмотреть актуальные курсы валют\n"
@@ -77,17 +81,32 @@ async def track(update: Update, context: CallbackContext):
     if len(context.args) == 0:
         tracked_currencies = context.user_data.get('tracked_currencies', [])
         if tracked_currencies:
-            message = "Отслеживаемые валюты:\n" + "\n".join(tracked_currencies)
+            message = "Отслеживаемые валюты:\n"
+            for currency in tracked_currencies:
+                # Получаем курс для каждой отслеживаемой валюты
+                response = requests.get(EXCHANGE_RATE_API_URL + "USD")  # Используем USD как базовую валюту
+                if response.status_code == 200:
+                    data = response.json()
+                    rates = data['rates']
+                    if currency.upper() in rates:
+                        rate = rates[currency.upper()]
+                        message += f"{currency.upper()}: {rate}\n"
+                    else:
+                        message += f"{currency.upper()}: Нет данных о курсе\n"
+                else:
+                    message += f"{currency.upper()}: Не удалось получить курс\n"
         else:
-            message = "Вы не отслеживаете никакие валюты."
+            message = "В данный момент вы не отслеживаете никакие валюты. Введите /track и название валюты, чтобы добавить валюту"
         await update.message.reply_text(message)
     else:
+        # Добавляем новые валюты в список отслеживаемых
         tracked_currencies = context.user_data.get('tracked_currencies', [])
         for currency in context.args:
             if currency.upper() not in tracked_currencies:
                 tracked_currencies.append(currency.upper())
         context.user_data['tracked_currencies'] = tracked_currencies
         await update.message.reply_text(f"Теперь вы отслеживаете валюты: {', '.join(tracked_currencies)}")
+
 
 # Обработчик неизвестных сообщений
 async def unknown(update: Update, context: CallbackContext):
