@@ -15,11 +15,16 @@ def start(update: Update, context: CallbackContext):
         f"Привет, {user.first_name}! Я бот для конвертации валют. \n"
         "Используй /help, чтобы узнать, что я умею."
 
-@bot.message_handler(commands=['help'])
-def send_welcome(message):
-    bot.send_message(message.chat.id, 'Список навыков:\n /start - начать работу с ботом\n /help - получить список доступных навыков\n /convert - конвертировать валюту')
-
-
+# Команда /help
+def help_command(update: Update, context: CallbackContext):
+    update.message.reply_text(
+        "Вот что я умею:\n"
+        "/start - Запустить бота\n"
+        "/help - Помощь\n"
+        "/rates - Посмотреть актуальные курсы валют\n"
+        "/track - Настроить список отслеживаемых валют\n"
+        "/convert - Конвертировать сумму из одной валюты в другую"
+    )
 @bot.message_handler(commands=['convert'])
 def converter(message):
     bot.send_message(message.chat.id, 'Сколько конвертируем?')
