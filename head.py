@@ -25,57 +25,41 @@ def help_command(update: Update, context: CallbackContext):
         "/track - Настроить список отслеживаемых валют\n"
         "/convert - Конвертировать сумму из одной валюты в другую"
     )
-@bot.message_handler(commands=['convert'])
-def converter(message):
-    bot.send_message(message.chat.id, 'Сколько конвертируем?')
-    bot.register_next_step_handler(message, summa)
-
-def summa(message):
-    global amount
-    try:
-        amount = int(message.text.strip())
-    except ValueError:
-        bot.send_message(message.chat.id, 'Перепроверьте данные. Нам нужно число:')
-        bot.register_next_step_handler(message, summa)
-        return
-
-    if amount >= 1:
-        markup = types.InlineKeyboardMarkup(row_width=2)
-        btn1 = types.InlineKeyboardButton('USD/EUR', callback_data='usd/eur')
-        btn2 = types.InlineKeyboardButton('EUR/USD', callback_data='eur/usd')
-        btn3 = types.InlineKeyboardButton('USD/RUB', callback_data='usd/rub')
-        btn4 = types.InlineKeyboardButton('RUB/USD', callback_data='rub/usd')
-        btn5 = types.InlineKeyboardButton('EUR/RUB', callback_data='eur/rub')
-        btn6 = types.InlineKeyboardButton('RUB/EUR', callback_data='rub/eur')
-        btn7 = types.InlineKeyboardButton('Другое значение', callback_data='else')
-        markup.add(btn1, btn2, btn3, btn4, btn5, btn6, btn7)
-        bot.send_message(message.chat.id, 'Выберите пару валют', reply_markup=markup)
+    
+# Команда /rates - получение курсов валют
+def rates(update: Update, context: CallbackContext):
+    base_currency = "USD"  # Базовая валюта по умолчанию
+    response = requests.get(EXCHANGE_RATE_API_URL + base_currency)
+    if response.status_code == 200:
+        data = response.json()
+        rates = data['rates']
+        message = "Актуальные курсы валют (базовая: USD):\n"
+        for currency, rate in rates.items():
+            message += f"{currency}: {rate}\n"
+        update.message.reply_text(message)
     else:
-        bot.send_message(message.chat.id, 'Перепроверьте данные. Нам нужно положительное число и более 0:')
-        bot.register_next_step_handler(message, summa)
+        update.message.reply_text("Не удалось получить курсы валют. Попробуйте позже.")
 
+# Обработчик неизвестных сообщений
+def unknown(update: Update, context: CallbackContext):
+    update.message.reply_text("Извините, я не понимаю эту команду. Используйте /help.")
 
-@bot.callback_query_handler(func=lambda call: True)
-def callback(call):
-    if call.data != 'else':
-        values = call.data.upper().split('/')
-        res = currency.convert(amount, values[0], values[1])
-        bot.send_message(call.message.chat.id, f'Получается: {round(res, 2)}. Введите следующее число?')
-        bot.register_next_step_handler(call.message, summa)
-    else:
-        bot.send_message(call.message.chat.id, 'Введите пару значений через слэшь')
-        bot.register_next_step_handler(call.message, my_currency)
+   # Основная функция для запуска бота
+def main():
+    updater = Updater(TELEGRAM_TOKEN)
+    dispatcher = updater.dispatcher
 
+    # Обработчики команд
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CommandHandler("help", help_command))
+    dispatcher.add_handler(CommandHandler("rates", rates))
 
-def my_currency(message):
-        try:
-            values = message.text.upper().split('/')
-            res = currency.convert(amount, values[0], values[1])
-            bot.send_message(message.chat.id, f'Получается: {round(res, 2)}. Введите следующее число?')
-            bot.register_next_step_handler(message, summa)
-        except Exception:
-            bot.send_message(message.chat.id, 'Что-то не так. Перепроверьте данные. Введите значение заново:')
-            bot.register_next_step_handler(message, my_currency)
+    # Обработчик неизвестных сообщений
+    dispatcher.add_handler(MessageHandler(Filters.command, unknown))
 
+    # Запуск бота
+    updater.start_polling()
+    updater.idle()
 
-bot.polling(none_stop = True)
+if __name__ == "__main__":
+    main()
