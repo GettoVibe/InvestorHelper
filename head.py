@@ -1,17 +1,19 @@
-from multiprocessing import Value
-import telebot
-from currency_converter import CurrencyConverter
-from telebot import types
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+import requests
 
+# Токен Telegram бота
+TELEGRAM_TOKEN = "7937493118:AAHhVBdgP6rpeGhs9D3hlkmqX3eS0uopb5Q"
 
-bot = telebot.TeleBot('7937493118:AAHhVBdgP6rpeGhs9D3hlkmqX3eS0uopb5Q')
-currency = CurrencyConverter()
-amount = 0
+# API для получения курсов валют
+EXCHANGE_RATE_API_URL = "https://api.exchangerate-api.com/v4/latest/"
 
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.send_message(message.chat.id, f'Привет, {message.from_user.first_name} {message.from_user.last_name}!\n Я - твой личный переводчик валют.\n Чтобы узнать подробнее о моих навыках, напиши /help.')
-
+# Команда /start
+def start(update: Update, context: CallbackContext):
+    user = update.effective_user
+    update.message.reply_text(
+        f"Привет, {user.first_name}! Я бот для конвертации валют. \n"
+        "Используй /help, чтобы узнать, что я умею."
 
 @bot.message_handler(commands=['help'])
 def send_welcome(message):
