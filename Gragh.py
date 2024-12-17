@@ -59,7 +59,7 @@ def gragh(update: Update,context: CallbackContext):
         update.message.reply_text('Ошибка:' + str(e))
 
 def main():
-    updater = Updater("7937493118:AAHhVBdgP6rpeGhs9D3hlkmqX3eS0uopb5Q", use_context=True)
+    updater = Updater("TOKEN", use_context=True)
     updater.dispatcher.add_handler(CommandHandler("start", start))
     updater.dispatcher.add_handler(CommandHandler("gragh", gragh))
 
