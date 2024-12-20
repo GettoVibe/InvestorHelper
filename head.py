@@ -1,141 +1,214 @@
 from telegram import Update
-from telegram.ext import Application, CommandHandler, CallbackContext, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, CallbackContext
 from dotenv import load_dotenv
 import requests
 import os
+import logging
+from datetime import datetime, timedelta
 
+# Загрузка переменных окружения
 load_dotenv()
 
-# Токен Telegram бота
+# Логирование
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Получение токена из переменной окружения
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+if not TELEGRAM_TOKEN:
+    logger.error("Токен Telegram бота не найден. Убедитесь, что он указан в .env файле.")
+    exit(1)
+
+# API для получения курсов валют
 EXCHANGE_RATE_API_URL = "https://api.exchangerate-api.com/v4/latest/"
 
 # Команда /start
 async def start(update: Update, context: CallbackContext):
     user = update.effective_user
-    await update.message.reply_text(
-        f"Привет, {user.first_name}! Я бот для конвертации валют. \n"
-        "Используй /help, чтобы узнать, что я умею."
-    )
+    logger.info(f"Received start command from {user.first_name}")
+    if update.message:
+        await update.message.reply_text(
+            f"Привет, {user.first_name}! Я бот для конвертации валют. \n"
+            "Используй /help, чтобы узнать, что я умею."
+        )
 
 # Команда /help
 async def help_command(update: Update, context: CallbackContext):
-    await update.message.reply_text(
-        "Вот, что я умею:\n"
-        "/start - Запустить бота\n"
-        "/help - Помощь\n"
-        "/rates - Посмотреть актуальные курсы валют\n"
-        "/track - Настроить список отслеживаемых валют\n"
-        "/convert - Конвертировать сумму из одной валюты в другую\n"
-        "/alert - Настроить уведомления о курсе валют\n"
-        "/base - Установить базовую валюту\n"
-    )
+    if update.message:
+        await update.message.reply_text(
+            "Вот, что я умею:\n"
+            "/start - Запустить бота\n"
+            "/help - Помощь\n"
+            "/rates - Посмотреть актуальные курсы валют\n"
+            "/track - Настроить список отслеживаемых валют\n"
+            "/convert - Конвертировать сумму из одной валюты в другую\n"
+            "/alert - Настроить уведомления о курсе валют\n"
+            "/base - Установить базовую валюту"
+        )
 
-# Команда /rates
+# Команда /rates - получение курсов валют
 async def rates(update: Update, context: CallbackContext):
-    base_currency = context.user_data.get('base_currency', 'USD')
+    base_currency = context.user_data.get('base_currency', 'USD')  # Базовая валюта по умолчанию
     response = requests.get(EXCHANGE_RATE_API_URL + base_currency)
     if response.status_code == 200:
         data = response.json()
         rates = data['rates']
-        message = f"Курсы валют (базовая: {base_currency}):\n"
+        message = f"Актуальные курсы валют (базовая: {base_currency}):\n"
         for currency, rate in rates.items():
             message += f"{currency}: {rate}\n"
-        await update.message.reply_text(message)
+        if update.message:
+            await update.message.reply_text(message)
     else:
-        await update.message.reply_text("Ошибка при получении курсов валют. Попробуйте позже.")
+        if update.message:
+            await update.message.reply_text("Не удалось получить курсы валют. Попробуйте позже.")
 
-# Команда /convert
+# Команда /convert - конвертация валют
 async def convert(update: Update, context: CallbackContext):
-    if len(context.args) != 3:
-        await update.message.reply_text("Использование: /convert <сумма> <исходная валюта> <целевая валюта>")
-        return
-
     try:
-        amount = float(context.args[0])
-        from_currency = context.args[1].upper()
-        to_currency = context.args[2].upper()
-
+        if len(context.args) != 3:
+            if update.message:
+                await update.message.reply_text("Использование: /convert <сумма> <исходная валюта> <целевая валюта>")
+            return
+        
+        amount = float(context.args[0])  # Сумма для конвертации
+        from_currency = context.args[1].upper()  # Исходная валюта
+        to_currency = context.args[2].upper()  # Целевая валюта
+        
         response = requests.get(EXCHANGE_RATE_API_URL + from_currency)
+        
         if response.status_code == 200:
             data = response.json()
             rates = data['rates']
-
-            if to_currency in rates:
-                converted_amount = amount * rates[to_currency]
+            
+            if to_currency not in rates:
+                if update.message:
+                    await update.message.reply_text(f"Ошибка: валюта {to_currency} не найдена.")
+                return
+            
+            conversion_rate = rates[to_currency]
+            converted_amount = amount * conversion_rate
+            if update.message:
                 await update.message.reply_text(f"{amount} {from_currency} = {converted_amount:.2f} {to_currency}")
-            else:
-                await update.message.reply_text(f"Валюта {to_currency} не найдена.")
         else:
-            await update.message.reply_text("Ошибка получения данных. Попробуйте позже.")
+            if update.message:
+                await update.message.reply_text("Не удалось получить курсы валют. Попробуйте позже.")
+    
     except ValueError:
-        await update.message.reply_text("Ошибка: сумма должна быть числом.")
+        if update.message:
+            await update.message.reply_text("Ошибка: сумма должна быть числом.")
 
-# Команда /track
+# Сохранение отслеживаемых валют для пользователя
 async def track(update: Update, context: CallbackContext):
-    tracked_currencies = context.user_data.get('tracked_currencies', [])
-    if context.args:
+    user = update.effective_user
+    if len(context.args) == 0:
+        tracked_currencies = context.user_data.get('tracked_currencies', [])
+        base_currency = context.user_data.get('base_currency', 'USD')  # Получаем базовую валюту пользователя
+        if tracked_currencies:
+            message = f"Отслеживаемые валюты (базовая валюта: {base_currency}):\n"
+            for currency in tracked_currencies:
+                # Получаем курс для каждой отслеживаемой валюты
+                response = requests.get(EXCHANGE_RATE_API_URL + base_currency)  # Используем базовую валюту
+                if response.status_code == 200:
+                    data = response.json()
+                    rates = data['rates']
+                    if currency.upper() in rates:
+                        rate = rates[currency.upper()]
+                        message += f"{currency.upper()}: {rate}\n"
+                    else:
+                        message += f"{currency.upper()}: Нет данных о курсе\n"
+                else:
+                    message += f"{currency.upper()}: Не удалось получить курс\n"
+        else:
+            message = "В данный момент вы не отслеживаете никакие валюты. Введите /track и название валюты, чтобы добавить валюту"
+        if update.message:
+            await update.message.reply_text(message)
+    else:
+        # Добавляем новые валюты в список отслеживаемых
+        tracked_currencies = context.user_data.get('tracked_currencies', [])
         for currency in context.args:
             if currency.upper() not in tracked_currencies:
                 tracked_currencies.append(currency.upper())
         context.user_data['tracked_currencies'] = tracked_currencies
-        await update.message.reply_text(f"Вы добавили для отслеживания: {', '.join(tracked_currencies)}")
-    else:
-        if tracked_currencies:
-            message = "Отслеживаемые валюты:\n"
-            for currency in tracked_currencies:
-                response = requests.get(EXCHANGE_RATE_API_URL + "USD")
-                if response.status_code == 200:
-                    rates = response.json().get('rates', {})
-                    rate = rates.get(currency, "нет данных")
-                    message += f"{currency}: {rate}\n"
-                else:
-                    message += f"{currency}: ошибка при получении данных\n"
-            await update.message.reply_text(message)
-        else:
-            await update.message.reply_text("Вы пока не отслеживаете ни одной валюты.")
+        if update.message:
+            await update.message.reply_text(f"Теперь вы отслеживаете валюты: {', '.join(tracked_currencies)}")
 
-# Команда /alert
+# Уведомления о курсе валют
 async def alert(update: Update, context: CallbackContext):
-    if len(context.args) != 3:
-        await update.message.reply_text("Использование: /alert <валюта> <оператор> <значение>")
-        return
-
     try:
+        if len(context.args) != 3:
+            if update.message:
+                await update.message.reply_text("Использование: /alert <валюта> <оператор> <значение>\nПример: /alert USD > 80")
+            return
+        
         currency = context.args[0].upper()
         operator = context.args[1]
         threshold = float(context.args[2])
+
+        # Сохраняем уведомление в user_data
         alerts = context.user_data.get('alerts', [])
         alerts.append((currency, operator, threshold))
         context.user_data['alerts'] = alerts
-        await update.message.reply_text(f"Уведомление добавлено: {currency} {operator} {threshold}")
-    except ValueError:
-        await update.message.reply_text("Ошибка: некорректное значение.")
 
-# Команда /base
+        if update.message:
+            await update.message.reply_text(f"Уведомление настроено: {currency} {operator} {threshold}")
+    except ValueError:
+        if update.message:
+            await update.message.reply_text("Ошибка: некорректное значение порога.")
+
+async def check_alerts(context: CallbackContext):
+    job = context.job
+    user_data = job.data
+    chat_id = job.chat_id
+
+    if 'alerts' not in user_data:
+        return
+
+    alerts = user_data['alerts']
+    response = requests.get(EXCHANGE_RATE_API_URL + "USD")  # Проверяем на основе USD
+    if response.status_code == 200:
+        data = response.json()
+        rates = data['rates']
+
+        for alert in alerts:
+            currency, operator, threshold = alert
+            if currency in rates:
+                rate = rates[currency]
+
+                if (operator == '>' and rate > threshold) or (operator == '<' and rate < threshold):
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=f"Уведомление: {currency} {operator} {threshold}. Текущий курс: {rate}"
+                    )
+
+# Установка базовой валюты
 async def base(update: Update, context: CallbackContext):
     if len(context.args) != 1:
-        await update.message.reply_text("Использование: /base <валюта>")
+        if update.message:
+            await update.message.reply_text("Использование: /base <валюта>")
         return
 
     base_currency = context.args[0].upper()
     context.user_data['base_currency'] = base_currency
-    await update.message.reply_text(f"Базовая валюта установлена: {base_currency}")
+    if update.message:
+        await update.message.reply_text(f"Базовая валюта установлена: {base_currency}")
 
 # Основная функция
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
+    # Логируем старт работы бота
+    logger.info("Bot is starting...")
+
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("rates", rates))
     application.add_handler(CommandHandler("convert", convert))
-    application.add_handler(CommandHandler("track", track))
-    application.add_handler(CommandHandler("alert", alert))
     application.add_handler(CommandHandler("history", history))
+    application.add_handler(CommandHandler("track", track))
+    application.add_handler(CommandHandler("rates", rates))
+    application.add_handler(CommandHandler("alert", alert))
     application.add_handler(CommandHandler("base", base))
 
-    application.run_polling()
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
