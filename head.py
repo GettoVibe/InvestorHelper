@@ -37,13 +37,13 @@ async def help_command(update: Update, context: CallbackContext):
     if update.message:
         await update.message.reply_text(
             "Вот, что я умею:\n"
-            "/start - Запустить бота\n"
-            "/help - Помощь\n"
-            "/rates - Посмотреть актуальные курсы валют\n"
-            "/track - Настроить список отслеживаемых валют\n"
-            "/convert - Конвертировать сумму из одной валюты в другую\n"
-            "/alert - Настроить уведомления о курсе валют\n"
-            "/base - Установить базовую валюту"
+            "/start - Начать работу с ботом\n"
+            "/help - Список команд\n"
+            "/rates [<валюта>] - Узнать актуальные курсы или курс конкретной валюты\n"
+            "/convert <сумма> <из валюты> <в валюту> - Конвертировать сумму\n"
+            "/track [<валюта>] - Управление отслеживаемыми валютами\n"
+            "/alert <из валюты> <в валюту> <оператор> <значение> - Установить уведомление\n"
+            "/base <валюта> - Установить базовую валюту"
         )
 
 # Команда /rates - получение курсов валют
@@ -53,9 +53,17 @@ async def rates(update: Update, context: CallbackContext):
     if response.status_code == 200:
         data = response.json()
         rates = data['rates']
-        message = f"Актуальные курсы валют (базовая: {base_currency}):\n"
-        for currency, rate in rates.items():
-            message += f"{currency}: {rate}\n"
+        if len(context.args) == 1:  # Проверяем, указана ли конкретная валюта
+            target_currency = context.args[0].upper()
+            if target_currency in rates:
+                rate = rates[target_currency]
+                message = f"Курс {target_currency} относительно {base_currency}: {rate}"
+            else:
+                message = f"Ошибка: валюта {target_currency} не найдена."
+        else:
+            message = f"Актуальные курсы валют (базовая: {base_currency}):\n"
+            for currency, rate in rates.items():
+                message += f"{currency}: {rate}\n"
         if update.message:
             await update.message.reply_text(message)
     else:
@@ -135,26 +143,33 @@ async def track(update: Update, context: CallbackContext):
 # Уведомления о курсе валют
 async def alert(update: Update, context: CallbackContext):
     try:
-        if len(context.args) != 3:
+        if len(context.args) != 4:
             if update.message:
-                await update.message.reply_text("Использование: /alert <валюта> <оператор> <значение>\nПример: /alert USD > 80")
+                await update.message.reply_text(
+                    "Использование: /alert <базовая валюта> <целевая валюта> к <оператор> <значение>\n"
+                    "Пример: /alert USD к RUB > 80"
+                )
             return
-        
-        currency = context.args[0].upper()
-        operator = context.args[1]
-        threshold = float(context.args[2])
+
+        base_currency = context.args[0].upper()
+        target_currency = context.args[1].upper()
+        operator = context.args[2]
+        threshold = float(context.args[3])
 
         # Сохраняем уведомление в user_data
         alerts = context.user_data.get('alerts', [])
-        alerts.append((currency, operator, threshold))
+        alerts.append((base_currency, target_currency, operator, threshold))
         context.user_data['alerts'] = alerts
 
         if update.message:
-            await update.message.reply_text(f"Уведомление настроено: {currency} {operator} {threshold}")
+            await update.message.reply_text(
+                f"Уведомление настроено: {base_currency}/{target_currency} {operator} {threshold}"
+            )
     except ValueError:
         if update.message:
             await update.message.reply_text("Ошибка: некорректное значение порога.")
 
+# Проверка уведомлений
 async def check_alerts(context: CallbackContext):
     job = context.job
     user_data = job.data
@@ -164,21 +179,22 @@ async def check_alerts(context: CallbackContext):
         return
 
     alerts = user_data['alerts']
-    response = requests.get(EXCHANGE_RATE_API_URL + "USD")  # Проверяем на основе USD
-    if response.status_code == 200:
-        data = response.json()
-        rates = data['rates']
+    for alert in alerts:
+        base_currency, target_currency, operator, threshold = alert
+        response = requests.get(EXCHANGE_RATE_API_URL + base_currency)
+        if response.status_code == 200:
+            data = response.json()
+            rates = data['rates']
 
-        for alert in alerts:
-            currency, operator, threshold = alert
-            if currency in rates:
-                rate = rates[currency]
+            if target_currency in rates:
+                rate = rates[target_currency]
 
                 if (operator == '>' and rate > threshold) or (operator == '<' and rate < threshold):
                     await context.bot.send_message(
                         chat_id=chat_id,
-                        text=f"Уведомление: {currency} {operator} {threshold}. Текущий курс: {rate}"
+                        text=f"Уведомление: {base_currency}/{target_currency} {operator} {threshold}. Текущий курс: {rate}"
                     )
+
 
 # Установка базовой валюты
 async def base(update: Update, context: CallbackContext):
