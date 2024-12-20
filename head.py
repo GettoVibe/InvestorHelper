@@ -6,7 +6,7 @@ import os
 
 load_dotenv()
 
-# Ваш токен Telegram бота
+# Токен Telegram бота
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
 # API для получения курсов валют
@@ -51,7 +51,7 @@ async def rates(update: Update, context: CallbackContext):
 async def convert(update: Update, context: CallbackContext):
     try:
         if len(context.args) != 3:
-            await update.message.reply_text("Использование: /convert <сумма> <исходная валюта> <целевые валюта>")
+            await update.message.reply_text("Использование: /convert <сумма> <исходная валюта> <целевая валюта>")
             return
         
         amount = float(context.args[0])  # Сумма для конвертации
@@ -153,7 +153,6 @@ async def check_alerts(context: CallbackContext):
                         chat_id=chat_id,
                         text=f"Уведомление: {currency} {operator} {threshold}. Текущий курс: {rate}"
                     )
-
 
 # Установка базовой валюты
 async def base(update: Update, context: CallbackContext):
