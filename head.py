@@ -202,7 +202,6 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("convert", convert))
-    application.add_handler(CommandHandler("history", history))
     application.add_handler(CommandHandler("track", track))
     application.add_handler(CommandHandler("rates", rates))
     application.add_handler(CommandHandler("alert", alert))
