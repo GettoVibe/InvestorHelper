@@ -42,7 +42,9 @@ async def help_command(update: Update, context: CallbackContext):
             "/rates [<валюта>] - Узнать актуальные курсы или курс конкретной валюты\n"
             "/convert <сумма> <из валюты> <в валюту> - Конвертировать сумму\n"
             "/track [<валюта>] - Управление отслеживаемыми валютами\n"
+            "/untrack - Удаление отслеживаемых валют\n"
             "/alert <из валюты> <в валюту> <оператор> <значение> - Установить уведомление\n"
+            "/remove_alert - Удалить установленное уведомление\n"
             "/base <валюта> - Установить базовую валюту"
         )
 
@@ -140,6 +142,42 @@ async def track(update: Update, context: CallbackContext):
         if update.message:
             await update.message.reply_text(f"Теперь вы отслеживаете валюты: {', '.join(tracked_currencies)}")
 
+# Команда для удаления отслеживаемых валют
+async def untrack(update: Update, context: CallbackContext):
+    user = update.effective_user
+    tracked_currencies = context.user_data.get('tracked_currencies', [])
+
+    if not tracked_currencies:
+        if update.message:
+            await update.message.reply_text("В данный момент вы не отслеживаете никакие валюты.")
+        return
+
+    if len(context.args) == 0:
+        if update.message:
+            message = "Ваши отслеживаемые валюты:\n"
+            for i, currency in enumerate(tracked_currencies, start=1):
+                message += f"{i}. {currency}\n"
+            message += "Чтобы удалить валюту, используйте: /untrack <номер валюты>"
+            await update.message.reply_text(message)
+        return
+
+    try:
+        index = int(context.args[0]) - 1  # Нумерация начинается с 1
+        if index < 0 or index >= len(tracked_currencies):
+            if update.message:
+                await update.message.reply_text("Ошибка: указан неверный номер валюты.")
+            return
+
+        removed_currency = tracked_currencies.pop(index)  # Удаляем валюту
+        context.user_data['tracked_currencies'] = tracked_currencies  # Обновляем данные пользователя
+
+        if update.message:
+            await update.message.reply_text(f"Валюта {removed_currency} больше не отслеживается.")
+
+    except ValueError:
+        if update.message:
+            await update.message.reply_text("Ошибка: введите корректный номер валюты.")
+
 # Уведомления о курсе валют
 async def alert(update: Update, context: CallbackContext):
     try:
@@ -194,6 +232,43 @@ async def check_alerts(context: CallbackContext):
                         chat_id=chat_id,
                         text=f"Уведомление: {base_currency}/{target_currency} {operator} {threshold}. Текущий курс: {rate}"
                     )
+# Команда для удаления уведомлений
+async def remove_alert(update: Update, context: CallbackContext):
+    user = update.effective_user
+    alerts = context.user_data.get('alerts', [])
+    
+    if not alerts:
+        if update.message:
+            await update.message.reply_text("У вас нет активных уведомлений.")
+        return
+
+    if len(context.args) != 1:
+        if update.message:
+            message = "Ваши уведомления:\n"
+            for i, (base_currency, target_currency, operator, threshold) in enumerate(alerts, start=1):
+                message += f"{i}. {base_currency}/{target_currency} {operator} {threshold}\n"
+            message += "Чтобы удалить уведомление, используйте: /remove_alert <номер уведомления>"
+            await update.message.reply_text(message)
+        return
+
+    try:
+        index = int(context.args[0]) - 1  # Номера в списке начинаются с 1
+        if index < 0 or index >= len(alerts):
+            if update.message:
+                await update.message.reply_text("Ошибка: указан неверный номер уведомления.")
+            return
+
+        removed_alert = alerts.pop(index)  # Удаляем уведомление
+        context.user_data['alerts'] = alerts  # Обновляем данные пользователя
+
+        if update.message:
+            await update.message.reply_text(
+                f"Удалено уведомление: {removed_alert[0]}/{removed_alert[1]} {removed_alert[2]} {removed_alert[3]}"
+            )
+
+    except ValueError:
+        if update.message:
+            await update.message.reply_text("Ошибка: введите корректный номер уведомления.")
 
 
 # Установка базовой валюты
@@ -219,9 +294,11 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("convert", convert))
     application.add_handler(CommandHandler("track", track))
+    application.add_handler(CommandHandler("untrack", untrack))
     application.add_handler(CommandHandler("rates", rates))
     application.add_handler(CommandHandler("alert", alert))
     application.add_handler(CommandHandler("base", base))
+    application.add_handler(CommandHandler("remove_alert", remove_alert))
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
